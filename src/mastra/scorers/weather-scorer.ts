@@ -11,67 +11,50 @@ export const toolCallAppropriatenessScorer = createToolCallAccuracyScorerCode({
 export const completenessScorer = createCompletenessScorer();
 
 // Custom LLM-judged scorer: evaluates if non-English locations are translated appropriately
+// Note: Temporarily simplified to avoid DeepSeek API json_schema compatibility issues
+// This is a basic rule-based scorer. For full LLM evaluation, consider using a model that supports json_schema
 export const translationScorer = createScorer({
   name: "Translation Quality",
   description:
     "Checks that non-English location names are translated and used correctly",
   type: "agent",
-  judge: {
-    model: "deepseek/deepseek-chat",
-    instructions:
-      "You are an expert evaluator of translation quality for geographic locations. " +
-      "Determine whether the user text mentions a non-English location and whether the assistant correctly uses an English translation of that location. " +
-      "Be lenient with transliteration differences and diacritics. " +
-      "Return only the structured JSON matching the provided schema.",
-  },
 })
   .preprocess(({ run }) => {
     const userText = (run.input?.inputMessages?.[0]?.content as string) || "";
     const assistantText = (run.output?.[0]?.content as string) || "";
     return { userText, assistantText };
   })
-  .analyze({
-    description:
-      "Extract location names and detect language/translation adequacy",
-    outputSchema: z.object({
-      nonEnglish: z.boolean(),
-      translated: z.boolean(),
-      confidence: z.number().min(0).max(1).default(1),
-      explanation: z.string().default(""),
-    }),
-    createPrompt: ({ results }) => `
-            You are evaluating if a weather assistant correctly handled translation of a non-English location.
-            User text:
-            """
-            ${results.preprocessStepResult.userText}
-            """
-            Assistant response:
-            """
-            ${results.preprocessStepResult.assistantText}
-            """
-            Tasks:
-            1) Identify if the user mentioned a location that appears non-English.
-            2) If non-English, check whether the assistant used a correct English translation of that location in its response.
-            3) Be lenient with transliteration differences (e.g., accents/diacritics).
-            Return JSON with fields:
-            {
-            "nonEnglish": boolean,
-            "translated": boolean,
-            "confidence": number, // 0-1
-            "explanation": string
-            }
-        `,
-  })
   .generateScore(({ results }) => {
-    const r = (results as any)?.analyzeStepResult || {};
-    if (!r.nonEnglish) return 1; // If not applicable, full credit
-    if (r.translated)
-      return Math.max(0, Math.min(1, 0.7 + 0.3 * (r.confidence ?? 1)));
-    return 0; // Non-English but not translated
+    const { userText, assistantText } = results.preprocessStepResult as { userText: string; assistantText: string };
+    
+    // Simple rule-based check: if no non-English characters detected, return full score
+    const hasNonEnglishChars = /[^\x00-\x7F]/.test(userText);
+    if (!hasNonEnglishChars) {
+      return 1; // Not applicable, full credit
+    }
+
+    // Basic check: if assistant response contains the same non-English characters, 
+    // it might not have been translated (simplified check)
+    // In a real scenario, this would require more sophisticated language detection
+    const assistantHasSameChars = /[^\x00-\x7F]/.test(assistantText);
+    
+    // If assistant response doesn't have non-English chars, assume translation was attempted
+    // This is a simplified heuristic - for accurate evaluation, use LLM with proper json_object support
+    if (!assistantHasSameChars) {
+      return 0.8; // Likely translated
+    }
+    
+    return 0.3; // May not be translated properly
   })
   .generateReason(({ results, score }) => {
-    const r = (results as any)?.analyzeStepResult || {};
-    return `Translation scoring: nonEnglish=${r.nonEnglish ?? false}, translated=${r.translated ?? false}, confidence=${r.confidence ?? 0}. Score=${score}. ${r.explanation ?? ""}`;
+    const { userText, assistantText } = results.preprocessStepResult as { userText: string; assistantText: string };
+    const hasNonEnglishChars = /[^\x00-\x7F]/.test(userText);
+    
+    if (!hasNonEnglishChars) {
+      return `Translation scoring: No non-English characters detected. Score=${score}`;
+    }
+    
+    return `Translation scoring: Non-English characters detected. Score=${score} (simplified rule-based evaluation)`;
   });
 
 export const scorers = {
