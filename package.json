@@ -16,7 +16,8 @@
   "scripts": {
     "dev": "mastra dev",
     "build": "mastra build",
-    "start": "mastra start"
+    "start": "mastra start",
+    "test:routing": "bun run test-routing-agent.ts"
   },
   "dependencies": {
     "@mastra/core": "^0.24.9",

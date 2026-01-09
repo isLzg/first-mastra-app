@@ -22,7 +22,10 @@ interface WeatherResponse {
 
 export const weatherTool = createTool({
   id: "get-weather",
-  description: "Get current weather for a location",
+  description: `Retrieves current weather information using the Open-Meteo API.
+    Accepts a city or location name as input and returns detailed weather data including
+    temperature, humidity, wind conditions, and weather code. Use this tool whenever
+    up-to-date weather data is requested for a specific location.`,
   inputSchema: z.object({
     location: z.string().describe("City name"),
   }),
